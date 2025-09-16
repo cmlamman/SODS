@@ -13,7 +13,7 @@ import pandas as pd
 from functions.lightProfile_functions import *
 from functions.ellipsoid_projection import *
 
-def get_ab_selection(sample, save_directory, ph_num='000', ap_rad = 1.5/2, N=100000, light_profile='SER'): 
+def get_ab_selection(sample, save_path, ph_num='000', ap_rad = 1.5/2, N=100000, light_profile='SER'): 
     '''
     creates and saves file of halo 'mock' catalog which includes input columns plus:
     shape_r: angular half-light radius in arcminutes
@@ -134,18 +134,26 @@ def get_ab_selection(sample, save_directory, ph_num='000', ap_rad = 1.5/2, N=100
     sample['E2'] = sky_e2
     
     print('saving')
-    sample.write(save_directory+'halo_selection_ph'+ph_num+'_z0.80_ph.fits', overwrite=True)
+    sample.write(save_path, overwrite=True)
     
 catalog_paths = glob.glob('/pscratch/sd/c/clamman/abacus/halos_withRSD_shapes/halo_selection_ph*_z0.80.fits')
 
-for cat in catalog_paths[::-1]:
+n_batches = 20
+for cat in catalog_paths:
     ph_num = cat.split('selection_ph')[1][:3]
-    # see if saved file already exists
-    if glob.glob('/pscratch/sd/c/clamman/abacus/halo_selections/halo_selection_ph'+ph_num+'_z0.80_ph.fits'):
-        print('ph', ph_num, 'already done, moving on')
-        continue
+    save_directory = '/pscratch/sd/c/clamman/abacus/halo_selections/halo_selection_ph'+ph_num+'_z0.80_'
     print('Working on ph', ph_num)
     halo_sample = Table.read(cat)
     halo_sample['Z'] = halo_sample['Z_withRSD']
     halo_sample = halo_sample[((np.abs(halo_sample['RA']) < 20) & (np.abs(halo_sample['DEC']) < 20) & (halo_sample['Z'] < 1.4) & (halo_sample['Z'] > 0.6))]
-    get_ab_selection(halo_sample, ph_num=ph_num, save_directory = '/pscratch/sd/c/clamman/abacus/halo_selections/')
+
+    # run catalog in chunks to periodically save
+    batch_size = len(halo_sample) // n_batches
+    for i in range(n_batches):
+        save_path = save_directory + str(i) + '.fits'
+        # see if saved file already exists
+        if glob.glob(save_path):
+            print('batch', i, ' done')
+            continue
+        batch = halo_sample[i*batch_size:(i+1)*batch_size]
+        get_ab_selection(batch, ph_num=ph_num, save_path=save_path)
